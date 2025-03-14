@@ -35,11 +35,11 @@ def set_reactions(self):
 
     self.n_rate_constants = [[None]] * self.n_reactions
 
-    self.reactant_stoich_coeffs = torch.Tensor(self.gas.reactant_stoich_coeffs()).to(self.device)
+    self.reactant_stoich_coeffs = torch.Tensor(self.gas.reactant_stoich_coeffs).to(self.device)
 
-    self.reactant_orders = torch.Tensor(self.gas.reactant_stoich_coeffs()).to(self.device)
+    self.reactant_orders = torch.Tensor(self.gas.reactant_stoich_coeffs).to(self.device)
 
-    self.product_stoich_coeffs = torch.Tensor(self.gas.product_stoich_coeffs()).to(self.device)
+    self.product_stoich_coeffs = torch.Tensor(self.gas.product_stoich_coeffs).to(self.device)
 
     self.net_stoich_coeffs = self.product_stoich_coeffs - self.reactant_stoich_coeffs
 
@@ -69,35 +69,63 @@ def set_reactions(self):
     count_type4 = -1
 
     for i in range(self.n_reactions):
-
         # Type 1: regular reaction, 2: three-body, 4:fall-off, 5:pressure-dependent-Arrhenius
-
         yaml_reaction = self.model_yaml['reactions'][i]
+        self.reaction[i] = {'equation': self.gas.reaction_equations()[i]}
+        self.reaction[i]['reactants'] = self.gas.reactions()[i].reactants
+        self.reaction[i]['products'] = self.gas.reactions()[i].products
+        ### begin new ###
+        try:
+            if yaml_reaction['type'] == 'three-body':
+                self.reaction[i]['reaction_type'] = 2
+            elif yaml_reaction['type'] == 'falloff':
+                self.reaction[i]['reaction_type'] = 4
+            elif yaml_reaction['type'] == 'pressure-dependent-Arrhenius':
+                self.reaction[i]['reaction_type'] = 5
+        except KeyError:
+            self.reaction[i]['reaction_type'] = 1
+        #### end new ####
+            
+        # self.reaction[i]['reaction_type'] = self.gas.reaction_type(i)
 
-        self.reaction[i] = {'equation': self.gas.reaction_equation(i)}
-        self.reaction[i]['reactants'] = self.gas.reactants(i)
-        self.reaction[i]['products'] = self.gas.products(i)
-        self.reaction[i]['reaction_type'] = self.gas.reaction_type(i)
+        # if self.gas.reaction_type(i) in [1]:
+        #     self.list_reaction_type1.append(i)
 
-        if self.gas.reaction_type(i) in [1]:
+        # if self.gas.reaction_type(i) in [2]:
+        #     self.list_reaction_type2.append(i)
+
+        # if self.gas.reaction_type(i) in [4]:
+        #     # id of the current item in the list
+        #     count_type4 = count_type4 + 1
+        #     self.list_reaction_type4.append(i)
+
+        # if self.gas.reaction_type(i) in [5]:
+        #     self.list_reaction_type5.append(i)
+
+        # if self.gas.is_reversible(i) is False:
+        #     self.is_reversible[i].fill_(0)
+
+        # if self.gas.reaction_type(i) in [1, 2]:
+        ### begin new ###
+        if self.reaction[i]['reaction_type'] in [1]:
             self.list_reaction_type1.append(i)
 
-        if self.gas.reaction_type(i) in [2]:
+        if self.reaction[i]['reaction_type'] in [2]:
             self.list_reaction_type2.append(i)
 
-        if self.gas.reaction_type(i) in [4]:
+        if self.reaction[i]['reaction_type'] in [4]:
             # id of the current item in the list
             count_type4 = count_type4 + 1
             self.list_reaction_type4.append(i)
 
-        if self.gas.reaction_type(i) in [5]:
+        if self.reaction[i]['reaction_type'] in [5]:
             self.list_reaction_type5.append(i)
 
-        if self.gas.is_reversible(i) is False:
+        if self.reaction[i]['reaction_type'] is False:
             self.is_reversible[i].fill_(0)
 
-        if self.gas.reaction_type(i) in [1, 2]:
-
+        if self.reaction[i]['reaction_type'] in [1, 2]:
+        #### end new ####
             self.reaction[i]['A'] = torch.Tensor(
                 [yaml_reaction['rate-constant']['A']]).to(self.device)
 
@@ -113,9 +141,11 @@ def set_reactions(self):
                 Ea = [yaml_reaction['rate-constant']['Ea']]
 
             self.reaction[i]['Ea'] = torch.Tensor(Ea).to(self.device)
-
-        if self.gas.reaction_type(i) in [2]:
-
+        
+        ### begin new ###
+        # if self.gas.reaction_type(i) in [2]:
+        if self.reaction[i]['reaction_type'] in [2]:
+        #### end new ####
             self.is_three_body[i] = 1
 
             if 'efficiencies' in yaml_reaction:
@@ -124,9 +154,11 @@ def set_reactions(self):
 
                 for key, value in self.reaction[i]['efficiencies'].items():
                     self.efficiencies_coeffs[self.gas.species_index(key), i] = value
-
-        if self.gas.reaction_type(i) in [4]:
-
+        
+        ### begin new ###
+        # if self.gas.reaction_type(i) in [4]:
+        if self.reaction[i]['reaction_type'] in [4]:
+        #### end new ####
             self.is_falloff[i] = 1
 
             if 'efficiencies' in yaml_reaction:
@@ -192,8 +224,10 @@ def set_reactions(self):
                                                 'T2': torch.Tensor([1e30]).to(self.device),
                                                 'T3': torch.Tensor([Troe['T3']]).to(self.device)
                                                 }
-
-        if self.gas.reaction_type(i) in [5]:
+        ### begin new ###
+        # if self.gas.reaction_type(i) in [5]:
+        if self.reaction[i]['reaction_type'] in [5]:
+        #### end new ####
 
             self.n_rate_constants[i] = len(self.gas.reaction(i).rates)
 
@@ -279,32 +313,48 @@ def set_reactions(self):
 
             if (self.model_yaml['units']['length'] == 'cm' and
                     self.model_yaml['units']['quantity'] == 'mol'):
+                ### begin new ###
+                # if self.gas.reaction_type(i) in [1, 2, 4]:
+                #     self.reaction[i]['A'] *= 1e-3 ** (
+                #         self.reactant_stoich_coeffs[:, i].sum().item() - 1)
 
-                if self.gas.reaction_type(i) in [1, 2, 4]:
+                # if self.gas.reaction_type(i) in [2]:
+                #     self.reaction[i]['A'] *= 1e-3
+
+                # if self.gas.reaction_type(i) in [4]:
+                #     self.reaction[i]['A_0'] *= 1e-3
+                if self.reaction[i]['reaction_type'] in [1, 2 ,4]:
                     self.reaction[i]['A'] *= 1e-3 ** (
                         self.reactant_stoich_coeffs[:, i].sum().item() - 1)
 
-                if self.gas.reaction_type(i) in [2]:
+                if self.reaction[i]['reaction_type'] in [2]:
                     self.reaction[i]['A'] *= 1e-3
 
-                if self.gas.reaction_type(i) in [4]:
+                if self.reaction[i]['reaction_type'] in [4]:
                     self.reaction[i]['A_0'] *= 1e-3
-
+                
                     self.reaction[i]['A_0'] *= 1e-3 ** (
                         self.reactant_stoich_coeffs[:, i].sum().item() - 1)
 
-                if self.gas.reaction_type(i) in [5]:
-
+                # if self.gas.reaction_type(i) in [5]:
+                if self.reaction[i]['reaction_type'] in [5]:
+                #### end new ####
                     for j in range(self.n_rate_constants[i]):
                         self.reaction[i]['p_dep']['A'][j] *= 1e-3 ** (
                             self.reactant_stoich_coeffs[:, i].sum().item() - 1)
-
-        if self.gas.reaction_type(i) in [1, 2, 4]:
+        
+        ### begin new ###
+        # if self.gas.reaction_type(i) in [1, 2, 4]:
+        if self.reaction[i]['reaction_type'] in [1, 2, 4]:
+        #### end new ####
             self.Arrhenius_coeffs[i, 0] = self.reaction[i]['A']
             self.Arrhenius_coeffs[i, 1] = self.reaction[i]['b']
             self.Arrhenius_coeffs[i, 2] = self.reaction[i]['Ea']
-
-        if self.gas.reaction_type(i) in [5]:
+        
+        ### begin new ###
+        # if self.gas.reaction_type(i) in [5]:
+        if self.reaction[i]['reaction_type'] in [5]:
+        #### end new ####
             self.Arrhenius_coeffs[i, 0] = self.reaction[i]['A']
             self.Arrhenius_coeffs[i, 1] = self.reaction[i]['b'][0]
             self.Arrhenius_coeffs[i, 2] = self.reaction[i]['Ea'][0]
